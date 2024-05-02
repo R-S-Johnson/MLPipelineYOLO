@@ -1,0 +1,133 @@
+Instructions for OBB labeling campaign using Label Studio:
+
+
+System Requirements:
+Installations:
+- Label Studio docker image -> docker build -t heartexlabs/label-studio:latest .
+- Machine Learning Backend by Label Studio -> git clone https://github.com/HumanSignal/label-studio-ml-backend.git
+- Label Studio SDK -> pip install label-studio-sdk
+
+Directory Setup:
+Working directory
+| -> YOLOdata
+    | -> images
+        | -> [chip.png]
+        .
+        .
+    | -> labels   # leave empty, this is where yolo training txt files output
+| -> preAnnot.py
+| -> prelabels   # Given point annotations
+    | -> [imgName].json
+    .
+    .
+| -> labelPostProc.py
+| -> classes.json   # dictionary of class name maped to index: {"class1": 0, "class2": 1, ...}
+| -> postPredict   # Tools for predicting on a trained model
+    | -> thresholding.py
+    | -> outputlabels  # place for yolo output predictions (will start empty)
+        | -> [imgName].txt
+        .
+        .
+
+
+Initialize AWS S3 bucket with images:
+Enable cross-origin resource sharing (<bucketname> -> Permissions -> cross-origin resource sharing -> edit) with this json:
+[
+    {
+        "AllowedHeaders": [
+            "*"
+        ],
+        "AllowedMethods": [
+            "GET"
+        ],
+        "AllowedOrigins": [
+            "*"
+        ],
+        "ExposeHeaders": [
+            "x-amz-server-side-encryption",
+            "x-amz-request-id",
+            "x-amz-id-2"
+        ],
+        "MaxAgeSeconds": 3000
+    }
+]
+
+Initalize IAM user with Access Key and permissions:
+Set up Access Key and note it and the secret access key.
+Create an inline policy in Permissions policies:
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::<your_bucket_name>",
+                "arn:aws:s3:::<your_bucket_name>/*"
+            ]
+        }
+    ]
+}
+Run aws config to add the IAM user's keys, then run aws sts get-session-token
+and separately note the new temporary keys and session token.
+
+Initialize Label Studio server:
+Run labelstudio docker server -> docker run -it -p 8080:8080 heartexlabs/label-studio:latest
+and create new bound box project (Object Detection with Bounding Boxes in Labeling Setup)
+Notice the url ".../labelstudio/projects/{projectID}/...", and note the project ID.
+
+Access Key:
+Navigate to Account & Settings to note the Access Token for the API.
+
+Initialize ML backend:
+Choose appropriate pretrained model here: label-studio-ml-backend\label_studio_ml\examples\<model>
+and open the docker-compose.yml file to edit environment
+variables.
+LABEL_STUDIO_URL = http://host.docker.internal:9090  # Or a different port if necessary
+LABEL_STUDIO_API_KEY = <AccessKey from last step>
+AWS_ACCESS_KEY_ID = <AccesKey from IAM user>  # Not the temporary one!
+AWS_SECRET_ACCESS_KEY = <SecretAccesKey from IAM user>  # ^
+
+Add S3 and ML backend to Label Studio Server:
+S3: Project Settings -> Cloud Storage -> Add Source Storage
+Input Bucket Name (and prefix if images are in a subdir) and region
+"-*" is the file filter for taking all files
+"Treat every bucket object as a source file" should be on (this signals that there's
+raw data here, not a formated JSON)
+Use the temporary access ID, secret, and session token
+Sync Storage!
+ML backend: Project Settings -> Model -> Connect Model
+Backend URL: http://host.docker.internal:9090
+Be sure "Use predictions to prelabel tasks" in Project Settings -> Annotation
+is enabled with the proper backend model selected.
+
+Preannotations script:
+usage: preAnnot.py [-h] -host LABEL_STUDIO_HOSTNAME [-pid PROJECT_ID] -t TOKEN
+additional help: python preAnnot.py --help
+This will take all the given labels from "prelabels" and submits them
+to the label studio server as editable annotations.
+
+User Labeling Campaign:
+Go through the Label Studio UI to validate/add bound box labels for the images
+
+Export labels as JSON
+
+Post Processing script:
+usage: labelPostProc.py [-h] -annot ANNOTATIONS_FILE -class CLASSES_FILE
+additional help: python labelPostProc.py --help
+This will add the [imagename].txt files to YOLOdata/labels, preparing
+the YOLOdata directory for OBB training.
+
+Run YOLO OBB training!
+
+Post prediction thresholding:
+usage: thresholding.py [-h] -labels LABELS_DIRECTORY [-thresh THRESHOLD] -tot TOTAL_CLASSES
+additional help: python thresholding.py --help
+This will edit the YOLO predict .txt files in labelsdir, limiting detection
+counts to the threshold number.

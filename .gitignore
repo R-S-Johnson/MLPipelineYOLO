@@ -1,0 +1,11 @@
+# images
+*.png
+*.jpg
+*.tif
+
+# data fields and models
+*.txt
+*.csv
+*.json
+*.geojson
+*.pt
