@@ -3,9 +3,11 @@ Instructions for OBB labeling campaign using Label Studio:
 
 System Requirements:
 Installations:
-- Label Studio docker image -> docker build -t heartexlabs/label-studio:latest .
+- Label Studio docker image (version >=1.12)
+    -> docker build -t heartexlabs/label-studio:latest .
 - Machine Learning Backend by Label Studio -> git clone https://github.com/HumanSignal/label-studio-ml-backend.git
 - Label Studio SDK -> pip install label-studio-sdk
+- Ultralytics -> pip install ultralytics
 
 Directory Setup:
 Working directory
@@ -89,7 +91,7 @@ Initialize ML backend:
 Choose appropriate pretrained model here: label-studio-ml-backend\label_studio_ml\examples\<model>
 and open the docker-compose.yml file to edit environment
 variables.
-LABEL_STUDIO_URL = http://host.docker.internal:9090  # Or a different port if necessary
+LABEL_STUDIO_URL = http://host.docker.internal:8080  # Or a different port if necessary
 LABEL_STUDIO_API_KEY = <AccessKey from last step>
 AWS_ACCESS_KEY_ID = <AccesKey from IAM user>  # Not the temporary one!
 AWS_SECRET_ACCESS_KEY = <SecretAccesKey from IAM user>  # ^
