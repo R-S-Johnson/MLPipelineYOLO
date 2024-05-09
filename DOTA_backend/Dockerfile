@@ -29,6 +29,7 @@ RUN --mount=type=cache,target=${PIP_CACHE_DIR},sharing=locked \
     pip install -r requirements-base.txt
 
 # install custom requirements
+RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 COPY requirements.txt .
 RUN --mount=type=cache,target=${PIP_CACHE_DIR},sharing=locked \
     pip install -r requirements.txt

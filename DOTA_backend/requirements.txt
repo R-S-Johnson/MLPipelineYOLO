@@ -3,4 +3,3 @@ torchvision
 boto3
 ultralytics
 opencv-python
-numpy
