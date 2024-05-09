@@ -9,3 +9,6 @@
 *.json
 *.geojson
 *.pt
+
+# folder ignores
+!DOTA_backend/*

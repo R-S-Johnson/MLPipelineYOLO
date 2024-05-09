@@ -98,12 +98,12 @@ class NewModel(LabelStudioMLBase):
                 },
                 "score": conf,
             } for obb, conf, clas in zip(obbs, confs, classes)]
-            # TODO <----------------------------
 
             prediction = {
                 "model_version": "YOLOv8n-obb.pt",
-                "result": []
+                "result": predict_results
             }
+            predictions.append(prediction)
 
         return ModelResponse(predictions=predictions)
     
