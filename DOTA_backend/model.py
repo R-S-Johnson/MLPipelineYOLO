@@ -3,6 +3,7 @@ from label_studio_ml.model import LabelStudioMLBase
 from label_studio_ml.response import ModelResponse
 from ultralytics import YOLO
 import numpy as np
+import requests
 import base64
 import boto3
 import os
@@ -17,11 +18,28 @@ class NewModel(LabelStudioMLBase):
         """
         self.set("model_version", "0.0.1")
 
-    def _get_image_url(self, labelstudio_url: str) -> str:
-        uri = labelstudio_url.split('/')[-1].replace("?fileuri=", '')
-        s3url = base64.b64decode(uri).decode('utf-8').split('/')
-        return s3url
+    @staticmethod
+    def _convert_rotated_rect_to_params(obb):
+        x1, y1, x2, y2, x3, y3, x4, y4 = np.array(obb).flatten()
+        # Calculate center of the rotated rectangle
+        cx = (x1 + x2 + x3 + x4) / 4.0
+        cy = (y1 + y2 + y3 + y4) / 4.0
 
+        # Calculate width and height of the rotated rectangle
+        width = max(x1, x2, x3, x4) - min(x1, x2, x3, x4)
+        height = max(y1, y2, y3, y4) - min(y1, y2, y3, y4)
+
+        # Calculate rotation angle of the rectangle
+        dx = x2 - x1
+        dy = y2 - y1
+        rotation = np.arctan2(dy, dx)
+
+        # Calculate top-left corner (x, y) of the unrotated rectangle
+        x = cx - width / 2.0
+        y = cy - height / 2.0
+
+        # Return the parameters (x, y, width, height, rotation)
+        return [x, y, width, height, rotation]
 
     def predict(self, tasks: List[Dict], context: Optional[Dict] = None, **kwargs) -> ModelResponse:
         """ Write your inference logic here
@@ -64,34 +82,41 @@ class NewModel(LabelStudioMLBase):
             aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
             aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
         )
-        model = YOLO('YOLOv8n-obb.pt')
+        model = YOLO('/models/YOLOv8n-obb.pt')
 
         for task in tasks:
             # Get image from s3
-            s3url = self._get_image_url(task['data']['image']).split('/')
+            s3url = task['data']['image'].split('/')
             bucket = s3url[2]
             object_key = '/'.join(s3url[3:])
-            s3client.download_file(bucket, object_key, 'targetImage.png')
+            # Generate presigned URL for the image
+            presigned_url = s3client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket, 'Key': object_key},
+                ExpiresIn=3600  # URL expires in 3600 seconds (1 hour)
+            )
+            response = requests.get(presigned_url)
+            with open('/targetImage.png', 'wb') as f:
+                f.write(response.content)
 
             # Run prediction on image and get obb predictions
-            result = model('targetImage.png')[0]
-            obbs = result.obb.xywhr.tolist()
+            result = model('/targetImage.png')[0]
+            obbs = [NewModel._convert_rotated_rect_to_params(obb) for obb in result.obb.xyxyxyxyn.tolist()]
             confs = result.obb.conf.tolist()
             classes = result.obb.cls.tolist()
             class_names = result.names
-            img_height, img_width = result.orig_shape
 
             # Format for Label Studio
             predict_results = [{
-                "from_name": "tag",
-                "to_name": "img",
+                "from_name": "label",
+                "to_name": "image",
                 "type": "rectanglelabels",
                 "value": {
                     "rectanglelabels": [class_names[clas]],
-                    "x": obb[0] / img_width * 100,
-                    "y": obb[1] / img_height * 100,
-                    "width": obb[2] / img_width * 100,
-                    "height": obb[3] / img_height * 100,
+                    "x": obb[0],
+                    "y": obb[1],
+                    "width": obb[2],
+                    "height": obb[3],
                     "rotation": np.degrees(obb[4])
                 },
                 "score": conf,
