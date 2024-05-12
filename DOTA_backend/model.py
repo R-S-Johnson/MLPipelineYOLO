@@ -17,30 +17,7 @@ class NewModel(LabelStudioMLBase):
         """Configure any parameters of your model here
         """
         self.set("model_version", "0.0.1")
-
-    @staticmethod
-    def _convert_rotated_rect_to_params(obb):
-        x1, y1, x2, y2, x3, y3, x4, y4 = np.array(obb).flatten()
-        # Calculate center of the rotated rectangle
-        cx = (x1 + x2 + x3 + x4) / 4.0
-        cy = (y1 + y2 + y3 + y4) / 4.0
-
-        # Calculate width and height of the rotated rectangle
-        width = max(x1, x2, x3, x4) - min(x1, x2, x3, x4)
-        height = max(y1, y2, y3, y4) - min(y1, y2, y3, y4)
-
-        # Calculate rotation angle of the rectangle
-        dx = x2 - x1
-        dy = y2 - y1
-        rotation = np.arctan2(dy, dx)
-
-        # Calculate top-left corner (x, y) of the unrotated rectangle
-        x = cx - width / 2.0
-        y = cy - height / 2.0
-
-        # Return the parameters (x, y, width, height, rotation)
-        return [x, y, width, height, rotation]
-
+    
     def predict(self, tasks: List[Dict], context: Optional[Dict] = None, **kwargs) -> ModelResponse:
         """ Write your inference logic here
             :param tasks: [Label Studio tasks in JSON format](https://labelstud.io/guide/task_format.html)
@@ -100,27 +77,45 @@ class NewModel(LabelStudioMLBase):
                 f.write(response.content)
 
             # Run prediction on image and get obb predictions
-            result = model('/targetImage.png')[0]
-            obbs = [NewModel._convert_rotated_rect_to_params(obb) for obb in result.obb.xyxyxyxyn.tolist()]
+            result = model("/targetImage.png")[0]
+            obbs = result.obb.xywhr.tolist()
+            raw_points = result.obb.xyxyxyxy.tolist()
             confs = result.obb.conf.tolist()
             classes = result.obb.cls.tolist()
             class_names = result.names
+            image_width, image_height = result.orig_shape
 
             # Format for Label Studio
-            predict_results = [{
-                "from_name": "label",
-                "to_name": "image",
-                "type": "rectanglelabels",
-                "value": {
-                    "rectanglelabels": [class_names[clas]],
-                    "x": obb[0],
-                    "y": obb[1],
-                    "width": obb[2],
-                    "height": obb[3],
-                    "rotation": np.degrees(obb[4])
-                },
-                "score": conf,
-            } for obb, conf, clas in zip(obbs, confs, classes)]
+            predict_results = []
+            for index, obb_data in enumerate(zip(obbs, confs, classes)):
+                # Extract from obb
+                obb, conf, clas = obb_data
+                x_center, y_center = obb[:2]
+                width, height = obb[2:4]
+                rotation = obb[4]
+
+                # Find top left corner for label studio visualization
+                if rotation != 0:
+                    x, y = min(raw_points[index], key=lambda pnt: pnt[1])
+                else:
+                    x = x_center - width/2
+                    y = y_center - height/2
+
+                predict_results.append({
+                    "from_name": "label",
+                    "to_name": "image",
+                    "type": "rectanglelabels",
+                    "value": {
+                        "rectanglelabels": [class_names[clas]],
+                        "x": x/image_width*100,
+                        "y": y/image_height*100,
+                        "width": width/image_width*100,
+                        "height": height/image_height*100,
+                        "rotation": np.degrees(rotation)
+                    },
+                    "score": conf,
+                })
+
 
             prediction = {
                 "model_version": "YOLOv8n-obb.pt",
