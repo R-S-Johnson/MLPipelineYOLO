@@ -4,7 +4,6 @@ from label_studio_ml.response import ModelResponse
 from ultralytics import YOLO
 import numpy as np
 import requests
-import base64
 import boto3
 import os
 

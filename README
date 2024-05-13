@@ -8,6 +8,7 @@ Installations:
 - Machine Learning Backend by Label Studio -> git clone https://github.com/HumanSignal/label-studio-ml-backend.git
 - Label Studio SDK -> pip install label-studio-sdk
 - Ultralytics -> pip install ultralytics
+- Boto3 -> pip install boto3
 
 Directory Setup:
 Working directory
